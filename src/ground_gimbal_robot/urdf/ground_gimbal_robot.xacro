@@ -1,0 +1,646 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="ground_gimbal_robot">
+  <xacro:arg name="gazebo_static_gimbal" default="false"/>
+
+  <xacro:property name="base_length" value="0.46"/>
+  <xacro:property name="base_width" value="0.34"/>
+  <xacro:property name="base_height" value="0.12"/>
+  <xacro:property name="base_mass" value="5.0"/>
+
+  <xacro:property name="wheel_radius" value="0.068"/>
+  <xacro:property name="wheel_width" value="0.045"/>
+  <xacro:property name="wheel_separation" value="0.43"/>
+  <xacro:property name="wheel_mass" value="0.45"/>
+
+  <xacro:property name="caster_radius" value="0.035"/>
+  <xacro:property name="caster_mass" value="0.15"/>
+
+  <xacro:property name="mount_length" value="0.18"/>
+  <xacro:property name="mount_width" value="0.14"/>
+  <xacro:property name="mount_height" value="0.055"/>
+  <xacro:property name="mount_mass" value="0.6"/>
+
+  <xacro:property name="pan_base_radius" value="0.052"/>
+  <xacro:property name="pan_base_height" value="0.035"/>
+  <xacro:property name="pan_base_mass" value="0.35"/>
+  <xacro:property name="tilt_frame_width" value="0.13"/>
+  <xacro:property name="tilt_frame_height" value="0.11"/>
+  <xacro:property name="tilt_frame_depth" value="0.035"/>
+  <xacro:property name="tilt_frame_mass" value="0.4"/>
+  <xacro:property name="camera_length" value="0.085"/>
+  <xacro:property name="camera_width" value="0.055"/>
+  <xacro:property name="camera_height" value="0.045"/>
+  <xacro:property name="camera_mass" value="0.22"/>
+  <xacro:property name="camera_sensor_offset" value="${camera_length + 0.22}"/>
+  <xacro:property name="camera_sensor_height_offset" value="0.10"/>
+
+  <xacro:macro name="box_inertia" params="mass x y z">
+    <inertial>
+      <mass value="${mass}"/>
+      <inertia
+        ixx="${mass * (y*y + z*z) / 12.0}"
+        ixy="0.0"
+        ixz="0.0"
+        iyy="${mass * (x*x + z*z) / 12.0}"
+        iyz="0.0"
+        izz="${mass * (x*x + y*y) / 12.0}"/>
+    </inertial>
+  </xacro:macro>
+
+  <xacro:macro name="cylinder_inertia" params="mass radius length axis">
+    <inertial>
+      <mass value="${mass}"/>
+      <xacro:if value="${axis == 'y'}">
+        <inertia
+          ixx="${mass * (3.0 * radius * radius + length * length) / 12.0}"
+          ixy="0.0"
+          ixz="0.0"
+          iyy="${mass * radius * radius / 2.0}"
+          iyz="0.0"
+          izz="${mass * (3.0 * radius * radius + length * length) / 12.0}"/>
+      </xacro:if>
+      <xacro:unless value="${axis == 'y'}">
+        <inertia
+          ixx="${mass * (3.0 * radius * radius + length * length) / 12.0}"
+          ixy="0.0"
+          ixz="0.0"
+          iyy="${mass * (3.0 * radius * radius + length * length) / 12.0}"
+          iyz="0.0"
+          izz="${mass * radius * radius / 2.0}"/>
+      </xacro:unless>
+    </inertial>
+  </xacro:macro>
+
+  <link name="base_footprint"/>
+
+  <joint name="base_footprint_joint" type="fixed">
+    <parent link="base_footprint"/>
+    <child link="base_link"/>
+    <origin xyz="0 0 ${wheel_radius}" rpy="0 0 0"/>
+  </joint>
+
+  <link name="base_link">
+    <visual>
+      <origin xyz="0 0 ${base_height / 2.0}" rpy="0 0 0"/>
+      <geometry>
+        <box size="${base_length} ${base_width} ${base_height}"/>
+      </geometry>
+      <material name="graphite_body">
+        <color rgba="0.16 0.18 0.20 1.0"/>
+      </material>
+    </visual>
+    <visual>
+      <origin xyz="-0.02 0 ${base_height + 0.008}" rpy="0 0 0"/>
+      <geometry>
+        <box size="${base_length * 0.78} ${base_width * 0.70} 0.016"/>
+      </geometry>
+      <material name="top_deck">
+        <color rgba="0.28 0.31 0.34 1.0"/>
+      </material>
+    </visual>
+    <visual>
+      <origin xyz="${base_length / 2.0 + 0.012} 0 ${base_height * 0.48}" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.024 ${base_width * 0.62} 0.055"/>
+      </geometry>
+      <material name="front_accent_blue">
+        <color rgba="0.0 0.46 0.95 1.0"/>
+      </material>
+    </visual>
+    <visual>
+      <origin xyz="${base_length / 2.0 + 0.025} 0 ${base_height * 0.22}" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.035 ${base_width * 0.82} 0.032"/>
+      </geometry>
+      <material name="front_bumper">
+        <color rgba="0.02 0.04 0.06 1.0"/>
+      </material>
+    </visual>
+    <visual>
+      <origin xyz="${-base_length / 2.0 - 0.014} 0 ${base_height * 0.22}" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.028 ${base_width * 0.70} 0.03"/>
+      </geometry>
+      <material name="rear_bumper">
+        <color rgba="0.02 0.04 0.06 1.0"/>
+      </material>
+    </visual>
+    <visual>
+      <origin xyz="0 ${base_width / 2.0 + 0.012} ${base_height * 0.58}" rpy="0 0 0"/>
+      <geometry>
+        <box size="${base_length * 0.82} 0.024 0.045"/>
+      </geometry>
+      <material name="side_rail_blue">
+        <color rgba="0.0 0.28 0.68 1.0"/>
+      </material>
+    </visual>
+    <visual>
+      <origin xyz="0 ${-base_width / 2.0 - 0.012} ${base_height * 0.58}" rpy="0 0 0"/>
+      <geometry>
+        <box size="${base_length * 0.82} 0.024 0.045"/>
+      </geometry>
+      <material name="side_rail_blue"/>
+    </visual>
+    <visual>
+      <origin xyz="${base_length * 0.17} 0 ${base_height + 0.019}" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.07 ${base_width * 0.58} 0.006"/>
+      </geometry>
+      <material name="sensor_stripe">
+        <color rgba="0.0 0.70 0.95 1.0"/>
+      </material>
+    </visual>
+    <visual>
+      <origin xyz="0 ${wheel_separation / 2.0} ${base_height * 0.34}" rpy="0 0 0"/>
+      <geometry>
+        <box size="${base_length * 0.44} 0.035 0.075"/>
+      </geometry>
+      <material name="left_wheel_fender">
+        <color rgba="0.06 0.08 0.10 1.0"/>
+      </material>
+    </visual>
+    <visual>
+      <origin xyz="0 ${-wheel_separation / 2.0} ${base_height * 0.34}" rpy="0 0 0"/>
+      <geometry>
+        <box size="${base_length * 0.44} 0.035 0.075"/>
+      </geometry>
+      <material name="right_wheel_fender">
+        <color rgba="0.06 0.08 0.10 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 ${base_height / 2.0}" rpy="0 0 0"/>
+      <geometry>
+        <box size="${base_length} ${base_width} ${base_height}"/>
+      </geometry>
+    </collision>
+    <xacro:box_inertia mass="${base_mass}" x="${base_length}" y="${base_width}" z="${base_height}"/>
+  </link>
+
+  <link name="gimbal_mount_link">
+    <visual>
+      <origin xyz="0 0 ${mount_height / 2.0}" rpy="0 0 0"/>
+      <geometry>
+        <box size="${mount_length} ${mount_width} ${mount_height}"/>
+      </geometry>
+      <material name="mount_blue">
+        <color rgba="0.0 0.32 0.78 1.0"/>
+      </material>
+    </visual>
+    <visual>
+      <origin xyz="0 0 ${mount_height + 0.018}" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.055" length="0.036"/>
+      </geometry>
+      <material name="mount_puck">
+        <color rgba="0.05 0.07 0.09 1.0"/>
+      </material>
+    </visual>
+    <visual>
+      <origin xyz="0.047 0 ${mount_height + 0.039}" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.028 0.075 0.012"/>
+      </geometry>
+      <material name="mount_alignment_mark">
+        <color rgba="0.0 0.70 0.95 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 ${mount_height / 2.0}" rpy="0 0 0"/>
+      <geometry>
+        <box size="${mount_length} ${mount_width} ${mount_height}"/>
+      </geometry>
+    </collision>
+    <xacro:box_inertia mass="${mount_mass}" x="${mount_length}" y="${mount_width}" z="${mount_height}"/>
+  </link>
+
+  <joint name="gimbal_mount_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="gimbal_mount_link"/>
+    <origin xyz="0.08 0 ${base_height}" rpy="0 0 0"/>
+  </joint>
+
+  <link name="gimbal_pan_link">
+    <visual>
+      <origin xyz="0 0 ${pan_base_height / 2.0}" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="${pan_base_radius}" length="${pan_base_height}"/>
+      </geometry>
+      <material name="gimbal_pan_dark">
+        <color rgba="0.04 0.05 0.06 1.0"/>
+      </material>
+    </visual>
+    <visual>
+      <origin xyz="0.028 0 ${pan_base_height + 0.022}" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.03 0.09 0.044"/>
+      </geometry>
+      <material name="gimbal_yoke_blue">
+        <color rgba="0.0 0.42 0.88 1.0"/>
+      </material>
+    </visual>
+    <visual>
+      <origin xyz="-0.028 0 ${pan_base_height + 0.022}" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.03 0.09 0.044"/>
+      </geometry>
+      <material name="gimbal_yoke_blue"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 ${pan_base_height / 2.0}" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="${pan_base_radius}" length="${pan_base_height}"/>
+      </geometry>
+    </collision>
+    <xacro:cylinder_inertia mass="${pan_base_mass}" radius="${pan_base_radius}" length="${pan_base_height}" axis="z"/>
+  </link>
+
+  <xacro:if value="$(arg gazebo_static_gimbal)">
+    <joint name="gimbal_pan_joint" type="fixed">
+      <parent link="gimbal_mount_link"/>
+      <child link="gimbal_pan_link"/>
+      <origin xyz="0 0 ${mount_height + 0.036}" rpy="0 0 0"/>
+    </joint>
+  </xacro:if>
+
+  <xacro:unless value="$(arg gazebo_static_gimbal)">
+    <joint name="gimbal_pan_joint" type="revolute">
+      <parent link="gimbal_mount_link"/>
+      <child link="gimbal_pan_link"/>
+      <origin xyz="0 0 ${mount_height + 0.036}" rpy="0 0 0"/>
+      <axis xyz="0 0 1"/>
+      <limit lower="-3.14159" upper="3.14159" effort="4.0" velocity="2.5"/>
+      <dynamics damping="0.15" friction="0.02"/>
+    </joint>
+  </xacro:unless>
+
+  <link name="gimbal_tilt_link">
+    <visual>
+      <origin xyz="0.035 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="${tilt_frame_depth} ${tilt_frame_width} ${tilt_frame_height}"/>
+      </geometry>
+      <material name="gimbal_tilt_frame">
+        <color rgba="0.12 0.14 0.16 1.0"/>
+      </material>
+    </visual>
+    <visual>
+      <origin xyz="0.005 ${tilt_frame_width / 2.0 + 0.012} 0" rpy="${pi / 2.0} 0 0"/>
+      <geometry>
+        <cylinder radius="0.022" length="0.024"/>
+      </geometry>
+      <material name="tilt_motor_left">
+        <color rgba="0.0 0.56 0.95 1.0"/>
+      </material>
+    </visual>
+    <visual>
+      <origin xyz="0.005 ${-tilt_frame_width / 2.0 - 0.012} 0" rpy="${pi / 2.0} 0 0"/>
+      <geometry>
+        <cylinder radius="0.022" length="0.024"/>
+      </geometry>
+      <material name="tilt_motor_right">
+        <color rgba="0.0 0.56 0.95 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.035 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="${tilt_frame_depth} ${tilt_frame_width} ${tilt_frame_height}"/>
+      </geometry>
+    </collision>
+    <xacro:box_inertia mass="${tilt_frame_mass}" x="${tilt_frame_depth}" y="${tilt_frame_width}" z="${tilt_frame_height}"/>
+  </link>
+
+  <xacro:if value="$(arg gazebo_static_gimbal)">
+    <joint name="gimbal_tilt_joint" type="fixed">
+      <parent link="gimbal_pan_link"/>
+      <child link="gimbal_tilt_link"/>
+      <origin xyz="0 0 ${pan_base_height + 0.055}" rpy="0 0 0"/>
+    </joint>
+  </xacro:if>
+
+  <xacro:unless value="$(arg gazebo_static_gimbal)">
+    <joint name="gimbal_tilt_joint" type="revolute">
+      <parent link="gimbal_pan_link"/>
+      <child link="gimbal_tilt_link"/>
+      <origin xyz="0 0 ${pan_base_height + 0.055}" rpy="0 0 0"/>
+      <axis xyz="0 1 0"/>
+      <limit lower="-0.85" upper="0.85" effort="3.0" velocity="2.0"/>
+      <dynamics damping="0.12" friction="0.02"/>
+    </joint>
+  </xacro:unless>
+
+  <link name="camera_link">
+    <visual>
+      <origin xyz="${camera_length / 2.0} 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="${camera_length} ${camera_width} ${camera_height}"/>
+      </geometry>
+      <material name="camera_body">
+        <color rgba="0.02 0.025 0.03 1.0"/>
+      </material>
+    </visual>
+    <visual>
+      <origin xyz="${camera_length + 0.006} 0 0" rpy="0 ${pi / 2.0} 0"/>
+      <geometry>
+        <cylinder radius="0.023" length="0.012"/>
+      </geometry>
+      <material name="camera_lens">
+        <color rgba="0.03 0.12 0.20 1.0"/>
+      </material>
+    </visual>
+    <visual>
+      <origin xyz="${camera_length + 0.013} 0 0" rpy="0 ${pi / 2.0} 0"/>
+      <geometry>
+        <cylinder radius="0.014" length="0.004"/>
+      </geometry>
+      <material name="camera_glass">
+        <color rgba="0.0 0.62 0.88 0.75"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="${camera_length / 2.0} 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="${camera_length} ${camera_width} ${camera_height}"/>
+      </geometry>
+    </collision>
+    <xacro:box_inertia mass="${camera_mass}" x="${camera_length}" y="${camera_width}" z="${camera_height}"/>
+  </link>
+
+  <joint name="camera_joint" type="fixed">
+    <parent link="gimbal_tilt_link"/>
+    <child link="camera_link"/>
+    <origin xyz="0.045 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <link name="camera_optical_frame"/>
+
+  <joint name="camera_optical_joint" type="fixed">
+    <parent link="camera_link"/>
+    <child link="camera_optical_frame"/>
+    <origin xyz="${camera_sensor_offset} 0 ${camera_sensor_height_offset}" rpy="${-pi / 2.0} 0 ${-pi / 2.0}"/>
+  </joint>
+<xacro:macro name="drive_wheel" params="prefix y">
+    <link name="${prefix}_wheel_link">
+      <visual>
+        <origin xyz="0 0 0" rpy="${pi / 2.0} 0 0"/>
+        <geometry>
+          <cylinder radius="${wheel_radius}" length="${wheel_width}"/>
+        </geometry>
+        <material name="wheel_dark">
+          <color rgba="0.01 0.01 0.012 1.0"/>
+        </material>
+      </visual>
+      <visual>
+        <origin xyz="0 0.026 0" rpy="${pi / 2.0} 0 0"/>
+        <geometry>
+          <cylinder radius="${wheel_radius * 0.52}" length="0.008"/>
+        </geometry>
+        <material name="wheel_hub_blue">
+          <color rgba="0.0 0.55 1.0 1.0"/>
+        </material>
+      </visual>
+      <visual>
+        <origin xyz="0 0.031 0" rpy="${pi / 2.0} 0 0"/>
+        <geometry>
+          <cylinder radius="${wheel_radius * 0.26}" length="0.006"/>
+        </geometry>
+        <material name="wheel_hub_silver">
+          <color rgba="0.82 0.86 0.88 1.0"/>
+        </material>
+      </visual>
+      <visual>
+        <origin xyz="0 -0.026 0" rpy="${pi / 2.0} 0 0"/>
+        <geometry>
+          <cylinder radius="${wheel_radius * 0.52}" length="0.008"/>
+        </geometry>
+        <material name="wheel_hub_blue"/>
+      </visual>
+      <visual>
+        <origin xyz="0 -0.031 0" rpy="${pi / 2.0} 0 0"/>
+        <geometry>
+          <cylinder radius="${wheel_radius * 0.26}" length="0.006"/>
+        </geometry>
+        <material name="wheel_hub_silver"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="${pi / 2.0} 0 0"/>
+        <geometry>
+          <cylinder radius="${wheel_radius}" length="${wheel_width}"/>
+        </geometry>
+      </collision>
+      <xacro:cylinder_inertia mass="${wheel_mass}" radius="${wheel_radius}" length="${wheel_width}" axis="y"/>
+    </link>
+
+    <joint name="${prefix}_wheel_joint" type="continuous">
+      <parent link="base_link"/>
+      <child link="${prefix}_wheel_link"/>
+      <origin xyz="0 ${y} 0" rpy="0 0 0"/>
+      <axis xyz="0 1 0"/>
+      <dynamics damping="0.1" friction="0.1"/>
+    </joint>
+  </xacro:macro>
+
+  <xacro:drive_wheel prefix="left" y="${wheel_separation / 2.0}"/>
+  <xacro:drive_wheel prefix="right" y="${-wheel_separation / 2.0}"/>
+
+  <link name="front_caster_link">
+    <visual>
+      <geometry>
+        <sphere radius="${caster_radius}"/>
+      </geometry>
+      <material name="caster_gray">
+        <color rgba="0.55 0.58 0.60 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <sphere radius="${caster_radius}"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="${caster_mass}"/>
+      <inertia
+        ixx="${2.0 * caster_mass * caster_radius * caster_radius / 5.0}"
+        ixy="0.0"
+        ixz="0.0"
+        iyy="${2.0 * caster_mass * caster_radius * caster_radius / 5.0}"
+        iyz="0.0"
+        izz="${2.0 * caster_mass * caster_radius * caster_radius / 5.0}"/>
+    </inertial>
+  </link>
+
+  <joint name="front_caster_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="front_caster_link"/>
+    <origin xyz="0.17 0 ${caster_radius - wheel_radius}" rpy="0 0 0"/>
+  </joint>
+
+  <link name="rear_caster_link">
+    <visual>
+      <geometry>
+        <sphere radius="${caster_radius}"/>
+      </geometry>
+      <material name="caster_gray"/>
+    </visual>
+    <collision>
+      <geometry>
+        <sphere radius="${caster_radius}"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="${caster_mass}"/>
+      <inertia
+        ixx="${2.0 * caster_mass * caster_radius * caster_radius / 5.0}"
+        ixy="0.0"
+        ixz="0.0"
+        iyy="${2.0 * caster_mass * caster_radius * caster_radius / 5.0}"
+        iyz="0.0"
+        izz="${2.0 * caster_mass * caster_radius * caster_radius / 5.0}"/>
+    </inertial>
+  </link>
+
+  <joint name="rear_caster_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="rear_caster_link"/>
+    <origin xyz="-0.17 0 ${caster_radius - wheel_radius}" rpy="0 0 0"/>
+  </joint>
+
+  <gazebo reference="base_link">
+    <material>Gazebo/DarkGrey</material>
+  </gazebo>
+
+  <gazebo reference="gimbal_mount_link">
+    <material>Gazebo/Blue</material>
+  </gazebo>
+
+  <gazebo reference="gimbal_pan_link">
+    <material>Gazebo/DarkGrey</material>
+    <gravity>false</gravity>
+    <self_collide>false</self_collide>
+  </gazebo>
+
+  <gazebo reference="gimbal_tilt_link">
+    <material>Gazebo/DarkGrey</material>
+    <gravity>false</gravity>
+    <self_collide>false</self_collide>
+  </gazebo>
+
+  <gazebo reference="camera_link">
+    <material>Gazebo/Black</material>
+    <gravity>false</gravity>
+    <self_collide>false</self_collide>
+    <sensor name="gimbal_camera" type="camera">
+      <pose>${camera_sensor_offset} 0 ${camera_sensor_height_offset} 0 0 0</pose>
+      <always_on>true</always_on>
+      <update_rate>30</update_rate>
+      <camera>
+        <horizontal_fov>1.3962634</horizontal_fov>
+        <image>
+          <width>640</width>
+          <height>480</height>
+          <format>R8G8B8</format>
+        </image>
+        <clip>
+          <near>0.25</near>
+          <far>50.0</far>
+        </clip>
+      </camera>
+      <plugin name="gimbal_camera_controller" filename="libgazebo_ros_camera.so">
+        <ros>
+          <namespace>/gimbal_camera</namespace>
+        </ros>
+        <camera_name>gimbal_camera</camera_name>
+        <frame_name>camera_optical_frame</frame_name>
+      </plugin>
+    </sensor>
+    <sensor name="gimbal_depth_camera" type="depth">
+      <pose>${camera_sensor_offset} 0 ${camera_sensor_height_offset} 0 0 0</pose>
+      <always_on>true</always_on>
+      <update_rate>30</update_rate>
+      <camera>
+        <horizontal_fov>1.3962634</horizontal_fov>
+        <image>
+          <width>640</width>
+          <height>480</height>
+        </image>
+        <clip>
+          <near>0.25</near>
+          <far>50.0</far>
+        </clip>
+      </camera>
+      <plugin name="gimbal_depth_camera_controller" filename="libgazebo_ros_camera.so">
+        <ros>
+          <namespace>/gimbal_camera</namespace>
+        </ros>
+        <camera_name>gimbal_depth_camera</camera_name>
+        <frame_name>camera_optical_frame</frame_name>
+      </plugin>
+    </sensor>
+  </gazebo>
+
+  <gazebo reference="left_wheel_link">
+    <material>Gazebo/Black</material>
+    <mu1>1.0</mu1>
+    <mu2>1.0</mu2>
+  </gazebo>
+
+  <gazebo reference="right_wheel_link">
+    <material>Gazebo/Black</material>
+    <mu1>1.0</mu1>
+    <mu2>1.0</mu2>
+  </gazebo>
+<gazebo>
+    <plugin name="ground_gimbal_diff_drive" filename="libgazebo_ros_diff_drive.so">
+      <ros>
+        <namespace>/</namespace>
+        <remapping>cmd_vel:=cmd_vel</remapping>
+        <remapping>odom:=odom</remapping>
+      </ros>
+      <left_joint>left_wheel_joint</left_joint>
+      <right_joint>right_wheel_joint</right_joint>
+      <wheel_separation>${wheel_separation}</wheel_separation>
+      <wheel_diameter>${2.0 * wheel_radius}</wheel_diameter>
+      <max_wheel_torque>20.0</max_wheel_torque>
+      <max_wheel_acceleration>4.0</max_wheel_acceleration>
+      <command_topic>cmd_vel</command_topic>
+      <odometry_topic>odom</odometry_topic>
+      <odometry_frame>odom</odometry_frame>
+      <robot_base_frame>base_footprint</robot_base_frame>
+      <publish_odom>true</publish_odom>
+      <publish_odom_tf>true</publish_odom_tf>
+      <publish_wheel_tf>true</publish_wheel_tf>
+      <update_rate>50</update_rate>
+    </plugin>
+  </gazebo>
+
+  <ros2_control name="GazeboSystem" type="system">
+    <hardware>
+      <plugin>gazebo_ros2_control/GazeboSystem</plugin>
+    </hardware>
+
+    <joint name="gimbal_pan_joint">
+      <command_interface name="position">
+        <param name="min">-3.14159</param>
+        <param name="max">3.14159</param>
+      </command_interface>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+
+    <joint name="gimbal_tilt_joint">
+      <command_interface name="position">
+        <param name="min">-0.85</param>
+        <param name="max">0.85</param>
+      </command_interface>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+  </ros2_control>
+
+  <gazebo>
+    <plugin name="gazebo_ros2_control" filename="libgazebo_ros2_control.so">
+      <parameters>$(find ground_gimbal_robot)/config/gimbal_controllers.yaml</parameters>
+    </plugin>
+  </gazebo>
+</robot>

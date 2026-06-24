@@ -1,0 +1,12 @@
+build/
+install/
+log/
+*.pyc
+*.pyc.*
+__pycache__/
+**/__pycache__/
+.DS_Store
+.codex_pycache/
+pytest-cache-files-*/
+**/pytest-cache-files-*/
+*.zip

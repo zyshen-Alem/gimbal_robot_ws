@@ -28,13 +28,17 @@ class CinematicTracking(Node):
         self.declare_parameter('odom_topic', 'odom')
         self.declare_parameter('target_odom_topic', '/tracking_subject/odom')
         self.declare_parameter('cmd_vel_topic', 'cmd_vel')
+        self.declare_parameter('secondary_cmd_vel_topic', '/ground_gimbal_robot/cmd_vel')
         self.declare_parameter('control_topic', 'cinematic_tracking/control_state')
+        self.declare_parameter('manual_override_topic', 'cinematic_tracking/manual_override')
+        self.declare_parameter('manual_override', False)
         self.declare_parameter('direct_gazebo_drive', True)
         self.declare_parameter('set_entity_state_service', '/gazebo/set_entity_state')
         self.declare_parameter('control_rate', 15.0)
         self.declare_parameter('target_timeout', 1.2)
         self.declare_parameter('lost_target_timeout', 2.5)
-        self.declare_parameter('orbit_radius', 1.20)
+        self.declare_parameter('startup_delay', 3.0)
+        self.declare_parameter('orbit_radius', 1.35)
         self.declare_parameter('follow_distance', 1.35)
         self.declare_parameter('side_distance', 1.35)
         self.declare_parameter('side_angle_deg', 82.0)
@@ -49,6 +53,11 @@ class CinematicTracking(Node):
         self.declare_parameter('heading_kp', 1.45)
         self.declare_parameter('distance_kp', 0.28)
         self.declare_parameter('orbit_turn_gain', 1.35)
+        self.declare_parameter('orbit_path_gain', 0.85)
+        self.declare_parameter('orbit_heading_gain', 1.65)
+        self.declare_parameter('orbit_lookahead_angle_deg', 32.0)
+        self.declare_parameter('target_velocity_gain', 0.85)
+        self.declare_parameter('target_clearance_radius', 0.95)
         self.declare_parameter('search_turn_speed', 0.34)
         self.declare_parameter('search_creep_speed', 0.05)
         self.declare_parameter('enable_obstacle_avoidance', False)
@@ -68,12 +77,16 @@ class CinematicTracking(Node):
         self.odom_topic = self.get_parameter('odom_topic').value
         self.target_odom_topic = self.get_parameter('target_odom_topic').value
         self.cmd_vel_topic = self.get_parameter('cmd_vel_topic').value
+        self.secondary_cmd_vel_topic = self.get_parameter('secondary_cmd_vel_topic').value
         self.control_topic = self.get_parameter('control_topic').value
+        self.manual_override_topic = self.get_parameter('manual_override_topic').value
+        self.manual_override = bool(self.get_parameter('manual_override').value)
         self.direct_gazebo_drive = bool(self.get_parameter('direct_gazebo_drive').value)
         self.set_entity_state_service = self.get_parameter('set_entity_state_service').value
         self.control_rate = float(self.get_parameter('control_rate').value)
         self.target_timeout = float(self.get_parameter('target_timeout').value)
         self.lost_target_timeout = float(self.get_parameter('lost_target_timeout').value)
+        self.startup_delay = float(self.get_parameter('startup_delay').value)
         self.orbit_radius = float(self.get_parameter('orbit_radius').value)
         self.follow_distance = float(self.get_parameter('follow_distance').value)
         self.side_distance = float(self.get_parameter('side_distance').value)
@@ -89,6 +102,13 @@ class CinematicTracking(Node):
         self.heading_kp = float(self.get_parameter('heading_kp').value)
         self.distance_kp = float(self.get_parameter('distance_kp').value)
         self.orbit_turn_gain = float(self.get_parameter('orbit_turn_gain').value)
+        self.orbit_path_gain = float(self.get_parameter('orbit_path_gain').value)
+        self.orbit_heading_gain = float(self.get_parameter('orbit_heading_gain').value)
+        self.orbit_lookahead_angle = math.radians(
+            float(self.get_parameter('orbit_lookahead_angle_deg').value)
+        )
+        self.target_velocity_gain = float(self.get_parameter('target_velocity_gain').value)
+        self.target_clearance_radius = float(self.get_parameter('target_clearance_radius').value)
         self.search_turn_speed = float(self.get_parameter('search_turn_speed').value)
         self.search_creep_speed = float(self.get_parameter('search_creep_speed').value)
         self.enable_obstacle_avoidance = bool(self.get_parameter('enable_obstacle_avoidance').value)
@@ -110,19 +130,31 @@ class CinematicTracking(Node):
         self.current_angular = 0.0
         self.robot_pose = None
         self.target_pose = None
+        self.target_velocity = (0.0, 0.0)
+        self.last_target_pose_sample = None
+        self.last_target_pose_time = None
+        self.last_command_dt = 0.0
+        self.orbit_phase = None
         self.orbit_direction = -1.0
         self.last_state = None
         self.warned_model_names = False
         self.warned_direct_drive_service = False
         self.avoidance_active = False
         self.direct_drive_future = None
+        self.manual_override_stop_sent = False
 
         self.create_subscription(Odometry, self.odom_topic, self.update_odom, 10)
         self.create_subscription(Odometry, self.target_odom_topic, self.update_target_odom, 10)
         self.create_subscription(ModelStates, self.model_states_topic, self.update_model_states, 10)
         self.create_subscription(Float64MultiArray, self.target_offset_topic, self.update_target_offset, 10)
         self.create_subscription(Bool, self.target_visible_topic, self.update_target_visible, 10)
+        self.create_subscription(Bool, self.manual_override_topic, self.update_manual_override, 10)
         self.cmd_publisher = self.create_publisher(Twist, self.cmd_vel_topic, 10)
+        self.secondary_cmd_publisher = None
+        if self.secondary_cmd_vel_topic:
+            self.secondary_cmd_publisher = self.create_publisher(
+                Twist, self.secondary_cmd_vel_topic, 10
+            )
         self.control_publisher = self.create_publisher(Float64MultiArray, self.control_topic, 10)
         self.set_entity_state_client = None
         if self.direct_gazebo_drive:
@@ -130,8 +162,8 @@ class CinematicTracking(Node):
         self.timer = self.create_timer(1.0 / max(self.control_rate, 1.0), self.publish_command)
 
         self.get_logger().info(
-            'Starting Week 6 cinematic tracking: mode=%s tracking_source=%s'
-            % (self.mode, self.tracking_source)
+            'Starting Week 7 integrated cinematic tracking: mode=%s tracking_source=%s manual_override=%s'
+            % (self.mode, self.tracking_source, self.manual_override)
         )
 
     def update_model_states(self, msg):
@@ -155,9 +187,11 @@ class CinematicTracking(Node):
             robot_pose.orientation.w,
         )
         self.robot_pose = (robot_pose.position.x, robot_pose.position.y, robot_pose.position.z, yaw)
+        now = self.get_clock().now()
         self.target_pose = (target_pose.position.x, target_pose.position.y)
+        self.update_target_velocity_from_pose(self.target_pose, now)
         self.target_visible = True
-        self.last_target_time = self.get_clock().now()
+        self.last_target_time = now
 
     def update_odom(self, msg):
         if self.tracking_source == 'model_states':
@@ -167,11 +201,23 @@ class CinematicTracking(Node):
         self.robot_pose = (msg.pose.pose.position.x, msg.pose.pose.position.y, msg.pose.pose.position.z, yaw)
 
     def update_target_odom(self, msg):
-        if self.tracking_source == 'model_states':
-            return
-        self.target_pose = (msg.pose.pose.position.x, msg.pose.pose.position.y)
-        self.target_visible = True
-        self.last_target_time = self.get_clock().now()
+        now = self.get_clock().now()
+        orientation = msg.pose.pose.orientation
+        yaw = self.quaternion_to_yaw(orientation.x, orientation.y, orientation.z, orientation.w)
+        local_vx = msg.twist.twist.linear.x
+        local_vy = msg.twist.twist.linear.y
+        world_vx = math.cos(yaw) * local_vx - math.sin(yaw) * local_vy
+        world_vy = math.sin(yaw) * local_vx + math.cos(yaw) * local_vy
+        if math.hypot(world_vx, world_vy) > 0.01:
+            self.target_velocity = (world_vx, world_vy)
+
+        odom_target_pose = (msg.pose.pose.position.x, msg.pose.pose.position.y)
+        if self.tracking_source != 'model_states':
+            self.target_pose = odom_target_pose
+            self.target_visible = True
+            self.last_target_time = now
+        elif self.target_pose is not None:
+            self.update_target_velocity_from_pose(self.target_pose, now, prefer_measured=True)
 
     def update_target_offset(self, msg):
         if len(msg.data) < 2:
@@ -191,10 +237,28 @@ class CinematicTracking(Node):
         if self.tracking_source not in ('odom', 'model_states') and not msg.data:
             self.target_visible = False
 
+    def update_manual_override(self, msg):
+        self.manual_override = bool(msg.data)
+        if self.manual_override:
+            self.get_logger().info('Manual override enabled; automatic /cmd_vel output is paused.')
+        else:
+            self.get_logger().info('Manual override disabled; automatic tracking control resumed.')
+        self.manual_override_stop_sent = False
+
     def publish_command(self):
         now = self.get_clock().now()
         dt = (now - self.last_timer_time).nanoseconds / 1_000_000_000
         self.last_timer_time = now
+        self.last_command_dt = dt
+
+        if self.manual_override:
+            self.publish_manual_override_state(now)
+            return
+        self.manual_override_stop_sent = False
+
+        if self.in_startup_delay(now):
+            self.publish_zero_startup_state(now)
+            return
 
         target_available = self.is_target_recent(now)
         recently_lost = self.is_target_recently_lost(now)
@@ -212,7 +276,7 @@ class CinematicTracking(Node):
         twist = Twist()
         twist.linear.x = self.current_linear
         twist.angular.z = self.current_angular
-        self.cmd_publisher.publish(twist)
+        self.publish_cmd_vel(twist)
         self.drive_gazebo_model_directly(self.current_linear, self.current_angular, dt)
 
         control_msg = Float64MultiArray()
@@ -227,9 +291,40 @@ class CinematicTracking(Node):
             1.0 if self.avoidance_active else 0.0,
             self.mode_index(),
             self.orbit_direction,
+            0.0,
         ]
         self.control_publisher.publish(control_msg)
         self.log_state(target_available, recently_lost)
+
+    def publish_cmd_vel(self, twist):
+        self.cmd_publisher.publish(twist)
+        if self.secondary_cmd_publisher is not None:
+            self.secondary_cmd_publisher.publish(twist)
+    def publish_manual_override_state(self, now):
+        if not self.manual_override_stop_sent:
+            self.current_linear = 0.0
+            self.current_angular = 0.0
+            self.publish_cmd_vel(Twist())
+            self.manual_override_stop_sent = True
+
+        control_msg = Float64MultiArray()
+        control_msg.data = [
+            self.current_linear,
+            self.current_angular,
+            self.filtered_x_error,
+            self.filtered_y_error,
+            self.filtered_confidence,
+            self.subject_distance(),
+            1.0 if self.is_target_recent(now) else 0.0,
+            1.0 if self.avoidance_active else 0.0,
+            self.mode_index(),
+            self.orbit_direction,
+            1.0,
+        ]
+        self.control_publisher.publish(control_msg)
+        if self.last_state != 'manual override':
+            self.get_logger().info('Cinematic state: manual override')
+            self.last_state = 'manual override'
 
     def drive_gazebo_model_directly(self, linear, angular, dt):
         if not self.direct_gazebo_drive or self.tracking_source != 'model_states':
@@ -254,13 +349,16 @@ class CinematicTracking(Node):
         mode = self.active_mode()
 
         self.avoidance_active = False
-        if mode == 'orbit' and not self.enable_obstacle_avoidance:
+        if mode == 'orbit':
             current_angle = math.atan2(robot_y - target_y, robot_x - target_x)
-            angular_rate = self.orbit_direction * abs(self.orbit_speed / max(self.orbit_radius, 0.05))
-            next_angle = current_angle + angular_rate * dt
-            new_x = target_x + self.orbit_radius * math.cos(next_angle)
-            new_y = target_y + self.orbit_radius * math.sin(next_angle)
-            new_yaw = self.normalize_angle(next_angle + self.orbit_direction * math.pi / 2.0)
+            orbit_rate = self.orbit_direction * abs(self.orbit_speed / max(self.orbit_radius, 0.05))
+            if self.orbit_phase is None:
+                self.orbit_phase = current_angle
+            self.orbit_phase = self.normalize_angle(self.orbit_phase + orbit_rate * dt)
+            radius = self.nav2_style_orbit_radius(target_x, target_y, self.orbit_phase)
+            new_x = target_x + radius * math.cos(self.orbit_phase)
+            new_y = target_y + radius * math.sin(self.orbit_phase)
+            new_yaw = self.normalize_angle(math.atan2(target_y - new_y, target_x - new_x))
         else:
             new_yaw = self.normalize_angle(robot_yaw + angular * dt)
             distance = linear * dt
@@ -293,10 +391,9 @@ class CinematicTracking(Node):
         mode = self.active_mode()
 
         if mode == 'orbit':
-            radial_error = distance - self.orbit_radius
-            linear = self.orbit_speed + 0.08 * radial_error
-            angular = -self.orbit_direction * (self.orbit_speed / self.orbit_radius)
-            angular += -0.12 * self.orbit_direction * radial_error
+            linear, angular = self.compute_moving_target_orbit_command(
+                robot_x, robot_y, robot_yaw, target_x, target_y, distance
+            )
         elif mode == 'side_tracking':
             desired_heading = bearing_to_target - self.orbit_direction * self.side_angle
             heading_error = self.normalize_angle(desired_heading - robot_yaw)
@@ -309,13 +406,75 @@ class CinematicTracking(Node):
             linear = self.follow_speed + self.distance_kp * radial_error
             angular = self.heading_kp * heading_error
 
-        if 0.0 <= linear < 0.10:
+        if 0.0 < linear < 0.10:
             linear = 0.10
         linear = self.clamp(linear, -self.max_reverse_speed, self.max_linear_speed)
         angular = self.clamp_angular(angular)
         linear, angular = self.nav2_style_local_planner(linear, angular, robot_x, robot_y, robot_yaw)
         return linear, angular
 
+    def compute_moving_target_orbit_command(self, robot_x, robot_y, robot_yaw, target_x, target_y, distance):
+        radius = max(distance, 0.05)
+        current_angle = math.atan2(robot_y - target_y, robot_x - target_x)
+        orbit_radius = max(
+            self.nav2_style_orbit_radius(target_x, target_y, current_angle),
+            self.target_clearance_radius,
+        )
+        radial_error = radius - orbit_radius
+
+        outward_heading = current_angle
+        tangent_heading = self.normalize_angle(
+            current_angle + self.orbit_direction * math.pi / 2.0
+        )
+
+        if radius < self.target_clearance_radius:
+            self.avoidance_active = True
+            heading_error = self.normalize_angle(outward_heading - robot_yaw)
+            linear = 0.08 if abs(heading_error) < math.radians(70.0) else 0.0
+            angular = self.clamp(1.0 * heading_error, -self.max_angular_speed, self.max_angular_speed)
+            return linear, angular
+
+        radial_heading_offset = -self.orbit_direction * math.atan(
+            self.clamp(-1.8 * radial_error, -1.2, 1.2)
+        )
+        tangent_heading = self.normalize_angle(tangent_heading + radial_heading_offset)
+
+        target_vx, target_vy = self.target_velocity
+        target_speed = math.hypot(target_vx, target_vy)
+        if target_speed > 0.03 and abs(radial_error) < 0.25:
+            target_motion_heading = math.atan2(target_vy, target_vx)
+            blend = self.clamp(target_speed / 0.25, 0.0, 0.25)
+            motion_error = self.normalize_angle(target_motion_heading - tangent_heading)
+            tangent_heading = self.normalize_angle(tangent_heading + blend * motion_error)
+
+        heading_error = self.normalize_angle(tangent_heading - robot_yaw)
+        base_speed = self.orbit_speed + 0.25 * self.clamp(abs(radial_error), 0.0, 0.5)
+        linear = self.clamp(base_speed, 0.08, self.max_linear_speed)
+        if abs(heading_error) > math.radians(95.0):
+            linear = 0.04
+        else:
+            linear *= max(0.50, math.cos(heading_error))
+
+        orbit_curvature = self.orbit_direction * linear / max(orbit_radius, 0.20)
+        heading_correction = 0.85 * heading_error
+        radial_correction = -0.25 * self.orbit_direction * self.clamp(radial_error, -0.6, 0.6)
+        angular = orbit_curvature + heading_correction + radial_correction
+        return linear, angular
+
+    def update_target_velocity_from_pose(self, target_pose, now, prefer_measured=False):
+        if self.last_target_pose_sample is not None and self.last_target_pose_time is not None:
+            dt = (now - self.last_target_pose_time).nanoseconds / 1_000_000_000
+            if dt > 0.02:
+                vx = (target_pose[0] - self.last_target_pose_sample[0]) / dt
+                vy = (target_pose[1] - self.last_target_pose_sample[1]) / dt
+                if math.isfinite(vx) and math.isfinite(vy):
+                    alpha = 0.45 if prefer_measured else 0.65
+                    self.target_velocity = (
+                        alpha * vx + (1.0 - alpha) * self.target_velocity[0],
+                        alpha * vy + (1.0 - alpha) * self.target_velocity[1],
+                    )
+        self.last_target_pose_sample = target_pose
+        self.last_target_pose_time = now
     def nav2_style_orbit_radius(self, target_x, target_y, angle):
         radius = self.orbit_radius
         if not self.enable_obstacle_avoidance or not self.obstacles:
@@ -379,6 +538,27 @@ class CinematicTracking(Node):
 
         self.avoidance_active = best_score is not None and abs(best_angular - angular) > 0.03
         return best_linear, best_angular
+
+    def in_startup_delay(self, now):
+        elapsed = (now - self.start_time).nanoseconds / 1_000_000_000
+        return elapsed < self.startup_delay
+
+    def publish_zero_startup_state(self, now):
+        self.current_linear = 0.0
+        self.current_angular = 0.0
+        self.publish_cmd_vel(Twist())
+        control_msg = Float64MultiArray()
+        control_msg.data = [
+            0.0, 0.0, self.filtered_x_error, self.filtered_y_error,
+            self.filtered_confidence, self.subject_distance(),
+            1.0 if self.is_target_recent(now) else 0.0,
+            0.0, self.mode_index(), self.orbit_direction, 0.0,
+        ]
+        self.control_publisher.publish(control_msg)
+        if self.last_state != 'startup stabilization':
+            self.get_logger().info('Cinematic state: startup stabilization')
+            self.last_state = 'startup stabilization'
+
     def compute_search_command(self):
         return self.search_creep_speed, self.clamp_angular(self.search_turn_speed)
 

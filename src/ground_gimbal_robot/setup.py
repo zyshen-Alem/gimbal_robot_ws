@@ -37,6 +37,7 @@ setup(
             'motion_demo = ground_gimbal_robot.motion_demo:main',
             'moving_target_demo = ground_gimbal_robot.moving_target_demo:main',
             'person_following = ground_gimbal_robot.person_following:main',
+            'tracking_filter = ground_gimbal_robot.tracking_filter:main',
             'tracking_motion_demo = ground_gimbal_robot.tracking_motion_demo:main',
         ],
     },

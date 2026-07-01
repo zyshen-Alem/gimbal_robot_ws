@@ -22,9 +22,14 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time')
     detector = LaunchConfiguration('detector')
     depth_topic = LaunchConfiguration('depth_topic')
+    raw_target_offset_topic = LaunchConfiguration('raw_target_offset_topic')
+    raw_target_visible_topic = LaunchConfiguration('raw_target_visible_topic')
+    filtered_target_offset_topic = LaunchConfiguration('filtered_target_offset_topic')
+    filtered_target_visible_topic = LaunchConfiguration('filtered_target_visible_topic')
     target_odom_topic = LaunchConfiguration('target_odom_topic')
     mode = LaunchConfiguration('mode')
     enable_base_tracking = LaunchConfiguration('enable_base_tracking')
+    direct_gazebo_drive = LaunchConfiguration('direct_gazebo_drive')
     enable_gimbal_controller = LaunchConfiguration('enable_gimbal_controller')
     move_target = LaunchConfiguration('move_target')
     desired_confidence = LaunchConfiguration('desired_confidence')
@@ -42,6 +47,10 @@ def generate_launch_description():
     recenter_speed = LaunchConfiguration('recenter_speed')
     search_creep_speed = LaunchConfiguration('search_creep_speed')
     enable_obstacle_avoidance = LaunchConfiguration('enable_obstacle_avoidance')
+    manual_override = LaunchConfiguration('manual_override')
+    gimbal_tracking_source = LaunchConfiguration('gimbal_tracking_source')
+    tracking_filter_prediction_timeout = LaunchConfiguration('tracking_filter_prediction_timeout')
+    tracking_filter_measurement_noise = LaunchConfiguration('tracking_filter_measurement_noise')
     gimbal_desired_x_offset = LaunchConfiguration('gimbal_desired_x_offset')
     gimbal_desired_y_offset = LaunchConfiguration('gimbal_desired_y_offset')
     pan_offset = LaunchConfiguration('pan_offset')
@@ -67,6 +76,26 @@ def generate_launch_description():
             description='Depth image topic aligned with the gimbal RGB camera.',
         ),
         DeclareLaunchArgument(
+            'raw_target_offset_topic',
+            default_value='gimbal/target_offset_raw',
+            description='Unfiltered visual target offset published by human_tracking.',
+        ),
+        DeclareLaunchArgument(
+            'raw_target_visible_topic',
+            default_value='gimbal/target_visible_raw',
+            description='Unfiltered target visibility published by human_tracking.',
+        ),
+        DeclareLaunchArgument(
+            'filtered_target_offset_topic',
+            default_value='gimbal/target_offset',
+            description='Week 7 EKF-style filtered target offset topic.',
+        ),
+        DeclareLaunchArgument(
+            'filtered_target_visible_topic',
+            default_value='gimbal/target_visible',
+            description='Week 7 filtered/predicted target visibility topic.',
+        ),
+        DeclareLaunchArgument(
             'target_odom_topic',
             default_value='/tracking_subject/odom',
             description='Odometry topic for the green tracking subject.',
@@ -75,6 +104,11 @@ def generate_launch_description():
             'enable_base_tracking',
             default_value='true',
             description='Start the mobile-base cinematic tracking controller.',
+        ),
+        DeclareLaunchArgument(
+            'direct_gazebo_drive',
+            default_value='true',
+            description='Directly update the Gazebo model pose for demos; set false to drive through /cmd_vel and the differential-drive plugin.',
         ),
         DeclareLaunchArgument(
             'mode',
@@ -167,6 +201,26 @@ def generate_launch_description():
             description='Enable static-obstacle avoidance for cinematic paths.',
         ),
         DeclareLaunchArgument(
+            'manual_override',
+            default_value='false',
+            description='Pause automatic base control so a teleop/manual publisher can drive /cmd_vel.',
+        ),
+        DeclareLaunchArgument(
+            'gimbal_tracking_source',
+            default_value='topic',
+            description='Use topic to consume the Week 7 filtered target offset, or odom for ground-truth gimbal aiming.',
+        ),
+        DeclareLaunchArgument(
+            'tracking_filter_prediction_timeout',
+            default_value='1.2',
+            description='Seconds to keep predicting filtered target offset after short detection loss.',
+        ),
+        DeclareLaunchArgument(
+            'tracking_filter_measurement_noise',
+            default_value='0.055',
+            description='Measurement noise used by the Week 7 target Kalman filter.',
+        ),
+        DeclareLaunchArgument(
             'gimbal_desired_x_offset',
             default_value='0.0',
             description='Desired horizontal subject offset for camera framing.',
@@ -242,6 +296,29 @@ def generate_launch_description():
                 'detector': detector,
                 'image_topic': '/gimbal_camera/gimbal_camera/image_raw',
                 'depth_topic': depth_topic,
+                'target_offset_topic': raw_target_offset_topic,
+                'target_visible_topic': raw_target_visible_topic,
+            }],
+            output='screen',
+        ),
+        Node(
+            package='ground_gimbal_robot',
+            executable='tracking_filter',
+            name='tracking_filter',
+            parameters=[{
+                'use_sim_time': use_sim_time,
+                'input_offset_topic': raw_target_offset_topic,
+                'input_visible_topic': raw_target_visible_topic,
+                'output_offset_topic': filtered_target_offset_topic,
+                'output_visible_topic': filtered_target_visible_topic,
+                'prediction_timeout': ParameterValue(
+                    tracking_filter_prediction_timeout,
+                    value_type=float,
+                ),
+                'measurement_noise': ParameterValue(
+                    tracking_filter_measurement_noise,
+                    value_type=float,
+                ),
             }],
             output='screen',
         ),
@@ -254,16 +331,23 @@ def generate_launch_description():
                 'use_sim_time': use_sim_time,
                 'mode': mode,
                 'tracking_source': 'model_states',
+                'direct_gazebo_drive': ParameterValue(direct_gazebo_drive, value_type=bool),
                 'target_odom_topic': target_odom_topic,
+                'target_offset_topic': filtered_target_offset_topic,
+                'target_visible_topic': filtered_target_visible_topic,
                 'model_states_topic': '/gazebo/model_states',
                 'robot_model_name': 'ground_gimbal_robot',
                 'target_model_name': 'tracking_subject',
-                'orbit_radius': 1.20,
+                'orbit_radius': 1.35,
                 'follow_distance': 1.35,
                 'side_distance': 1.35,
                 'side_angle_deg': 82.0,
                 'heading_kp': 1.45,
                 'orbit_turn_gain': 1.35,
+                'orbit_lookahead_angle_deg': 24.0,
+                'startup_delay': 3.0,
+                'linear_accel_limit': 0.18,
+                'angular_accel_limit': 0.35,
                 'showcase_period': ParameterValue(
                     showcase_period,
                     value_type=float,
@@ -312,12 +396,14 @@ def generate_launch_description():
                     enable_obstacle_avoidance,
                     value_type=bool,
                 ),
+                'manual_override': ParameterValue(manual_override, value_type=bool),
                 'obstacles': [
                     0.95, -0.85, 0.28,
                     1.80, 0.85, 0.30,
                 ],
-                'obstacle_inflation_radius': 0.35,
-                'avoidance_orbit_radius_offset': 0.55,
+                'obstacle_inflation_radius': 0.55,
+                'avoidance_orbit_radius_offset': 0.85,
+                'target_clearance_radius': 0.95,
                 'avoidance_turn_gain': 0.65,
             }],
             output='screen',
@@ -329,7 +415,7 @@ def generate_launch_description():
             condition=IfCondition(enable_gimbal_controller),
             parameters=[{
                 'use_sim_time': use_sim_time,
-                'tracking_source': 'odom',
+                'tracking_source': gimbal_tracking_source,
                 'desired_x_offset': ParameterValue(
                     gimbal_desired_x_offset,
                     value_type=float,
@@ -364,8 +450,8 @@ def generate_launch_description():
                     name='moving_target_demo',
                     parameters=[{
                         'use_sim_time': use_sim_time,
-                        'forward_speed': 0.16,
-                        'turn_speed': 0.20,
+                        'forward_speed': 0.22,
+                        'turn_speed': 0.18,
                     }],
                     output='screen',
                 ),

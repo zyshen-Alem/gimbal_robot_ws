@@ -42,22 +42,22 @@ class MovingTargetDemo(Node):
 
         if elapsed < 1.0:
             phase = 'initial pause'
-        elif elapsed < 5.0:
-            phase = 'short forward walk'
+        elif elapsed < 8.0:
+            phase = 'long forward walk'
             msg.linear.x = self.forward_speed
-            msg.angular.z = 0.02 * math.sin(0.9 * elapsed)
-        elif elapsed < 7.0:
-            phase = 'pause before left turn'
-        elif elapsed < 11.0:
-            phase = 'gentle left curve'
-            msg.linear.x = self.forward_speed * 0.65
-            msg.angular.z = self.turn_speed
-        elif elapsed < 13.0:
-            phase = 'pause after left turn'
-        elif elapsed < 16.0:
-            phase = 'short final walk'
-            msg.linear.x = self.forward_speed * 0.70
-            msg.angular.z = 0.02
+            msg.angular.z = 0.015 * math.sin(0.8 * elapsed)
+        elif elapsed < 9.5:
+            phase = 'brief walking pause'
+        elif elapsed < 15.5:
+            phase = 'wide left curve'
+            msg.linear.x = self.forward_speed * 0.85
+            msg.angular.z = self.turn_speed * 0.70
+        elif elapsed < 17.0:
+            phase = 'pause after wide turn'
+        elif elapsed < 24.0:
+            phase = 'extended final walk'
+            msg.linear.x = self.forward_speed * 0.90
+            msg.angular.z = 0.015
         else:
             phase = 'demo target stopped'
 

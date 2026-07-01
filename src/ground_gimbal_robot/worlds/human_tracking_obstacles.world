@@ -100,8 +100,8 @@
           <surface>
             <friction>
               <ode>
-                <mu>100.0</mu>
-                <mu2>50.0</mu2>
+                <mu>2.0</mu>
+                <mu2>2.0</mu2>
               </ode>
             </friction>
           </surface>
@@ -131,8 +131,8 @@
           <surface>
             <friction>
               <ode>
-                <mu>100.0</mu>
-                <mu2>50.0</mu2>
+                <mu>2.0</mu>
+                <mu2>2.0</mu2>
               </ode>
             </friction>
           </surface>
@@ -178,8 +178,8 @@
 
       <plugin name="tracking_subject_diff_drive" filename="libgazebo_ros_diff_drive.so">
         <ros>
-          <namespace>/tracking_subject</namespace>
-          <remapping>cmd_vel:=cmd_vel</remapping>
+          <remapping>cmd_vel:=/tracking_subject/cmd_vel</remapping>
+          <remapping>odom:=/tracking_subject/odom</remapping>
         </ros>
         <left_joint>left_wheel_joint</left_joint>
         <right_joint>right_wheel_joint</right_joint>
@@ -187,8 +187,8 @@
         <wheel_diameter>0.11</wheel_diameter>
         <max_wheel_torque>20.0</max_wheel_torque>
         <max_wheel_acceleration>8.0</max_wheel_acceleration>
-        <command_topic>cmd_vel</command_topic>
-        <odometry_topic>odom</odometry_topic>
+        <command_topic>/tracking_subject/cmd_vel</command_topic>
+        <odometry_topic>/tracking_subject/odom</odometry_topic>
         <odometry_frame>tracking_subject_odom</odometry_frame>
         <robot_base_frame>base</robot_base_frame>
         <publish_odom>true</publish_odom>

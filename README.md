@@ -330,3 +330,94 @@ Gimbal:        Gazebo pan/tilt joints track the detected target so the camera vi
 Recovery:      after short target loss, creep and turn toward the last seen side
 Avoidance:     slow, steer, or reverse orbit direction near known static obstacles
 ```
+
+## Week 7: System Integration & Optimization
+
+Week 7 focuses on engineering quality for the complete ground gimbal robot
+system. The perception, target filtering, gimbal aiming, cinematic base
+controller, moving subject behavior, obstacle-aware local planning, and manual
+control safety hooks are integrated into one optimized demo.
+
+The final Week 7 system includes:
+
+- moving green person-shaped target with a longer walking route
+- target offset filtering through the `tracking_filter` node
+- short tracking-loss prediction with confidence decay
+- odom/model-state target tracking for low-latency simulation demos
+- real `/cmd_vel` control through the Gazebo differential-drive plugin
+- continuous orbit behavior around the moving subject
+- target clearance protection so the robot does not collide with the subject
+- obstacle-aware orbit expansion around known red/blue static obstacles
+- smoother startup, acceleration limiting, and conservative speed caps
+- gimbal aiming that keeps the camera pointed at the subject
+- manual override support through `/cinematic_tracking/manual_override`
+
+### Run Week 7 optimized system demo
+
+```bash
+ros2 launch ground_gimbal_robot week7_system_demo.launch.py
+```
+
+The Week 7 launch defaults to `mode:=orbit`. The robot follows the moving target
+center, keeps a safe orbit radius, expands the path near obstacles, and keeps the
+gimbal aimed at the subject.
+
+Run the multi-shot showcase mode when needed:
+
+```bash
+ros2 launch ground_gimbal_robot week7_system_demo.launch.py mode:=showcase
+```
+
+Manual override can pause automatic base control so teleoperation or another
+`/cmd_vel` publisher can drive the robot:
+
+```bash
+ros2 topic pub /cinematic_tracking/manual_override std_msgs/msg/Bool "{data: true}"
+ros2 run teleop_twist_keyboard teleop_twist_keyboard
+ros2 topic pub /cinematic_tracking/manual_override std_msgs/msg/Bool "{data: false}"
+```
+
+Week 7 diagnostic topics:
+
+```text
+/cmd_vel                              mobile-base velocity command
+/odom                                 robot odometry from Gazebo diff-drive
+/tracking_subject/odom                moving green subject odometry
+/gimbal/target_offset_raw             unfiltered visual target estimate
+/gimbal/target_visible_raw            raw detector visibility
+/gimbal/target_offset                 filtered/predicted target estimate
+/gimbal/target_visible                filtered target visibility
+/cinematic_tracking/control_state     integrated controller diagnostics
+/cinematic_tracking/manual_override   true pauses automatic base control
+/gimbal_position_controller/commands  Gazebo gimbal pan/tilt commands
+```
+
+Optimized control behavior:
+
+```text
+Startup:        hold zero velocity briefly so Gazebo physics settles
+Orbit:          drive tangentially around the moving subject center
+Radius control: correct inward/outward drift to maintain filming distance
+Target safety:  if too close to the subject, move outward before orbiting
+Obstacle logic: expand the orbit radius near known static obstacles
+Motion smooth:  apply linear/angular acceleration limits and low speed caps
+Tracking loss:  predict briefly, decay confidence, then enter slow recovery
+Manual control: pause autonomy without shutting down the ROS2 graph
+```
+
+Engineering trade-offs:
+
+```text
+Latency vs smoothness:      filtering reduces jitter but can add small delay
+Prediction vs safety:       short prediction bridges missed frames but decays quickly
+Cinematic path vs clearance: wider orbit improves safety around obstacles
+Speed vs stability:         conservative limits prevent Gazebo tipping and overshoot
+Integration vs modularity:  separate nodes keep perception, filtering, control, and gimbal logic reusable
+Nav2-style vs full Nav2:    simplified local planning is enough for the demo, but not a full Navigation2 stack
+```
+
+Demo video link:
+
+```text
+[add optimized Week 7 demo video link after recording]
+```

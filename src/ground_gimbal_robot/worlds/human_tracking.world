@@ -14,39 +14,112 @@
       <pose>1.8 0.0 0.06 0 0 0</pose>
       <link name="base">
         <visual name="base_visual">
-          <pose>0 0 0.035 0 0 0</pose>
+          <pose>0 0 0.025 0 0 0</pose>
           <geometry>
             <box>
-              <size>0.32 0.24 0.07</size>
+              <size>0.30 0.22 0.05</size>
             </box>
           </geometry>
           <material>
-            <ambient>0.0 0.35 0.05 1</ambient>
-            <diffuse>0.0 0.45 0.08 1</diffuse>
+            <ambient>0.03 0.03 0.03 1</ambient>
+            <diffuse>0.04 0.04 0.04 1</diffuse>
+          </material>
+        </visual>
+        <visual name="left_leg_visual">
+          <pose>0 0.07 0.34 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.09 0.08 0.56</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.03 0.05 0.22 1</ambient>
+            <diffuse>0.05 0.08 0.36 1</diffuse>
+          </material>
+        </visual>
+        <visual name="right_leg_visual">
+          <pose>0 -0.07 0.34 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.09 0.08 0.56</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.03 0.05 0.22 1</ambient>
+            <diffuse>0.05 0.08 0.36 1</diffuse>
           </material>
         </visual>
         <visual name="torso_visual">
-          <pose>0 0 0.43 0 0 0</pose>
+          <pose>0 0 0.91 0 0 0</pose>
           <geometry>
             <box>
-              <size>0.28 0.16 0.72</size>
+              <size>0.18 0.36 0.58</size>
             </box>
           </geometry>
           <material>
-            <ambient>0.0 0.8 0.1 1</ambient>
-            <diffuse>0.0 0.9 0.1 1</diffuse>
+            <ambient>0.55 0.05 0.05 1</ambient>
+            <diffuse>0.80 0.08 0.08 1</diffuse>
+          </material>
+        </visual>
+        <visual name="left_arm_visual">
+          <pose>0 0.25 0.90 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.07 0.08 0.52</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.72 0.48 0.32 1</ambient>
+            <diffuse>0.95 0.65 0.42 1</diffuse>
+          </material>
+        </visual>
+        <visual name="right_arm_visual">
+          <pose>0 -0.25 0.90 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.07 0.08 0.52</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.72 0.48 0.32 1</ambient>
+            <diffuse>0.95 0.65 0.42 1</diffuse>
+          </material>
+        </visual>
+        <visual name="neck_visual">
+          <pose>0 0 1.24 0 0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.045</radius>
+              <length>0.10</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.72 0.48 0.32 1</ambient>
+            <diffuse>0.95 0.65 0.42 1</diffuse>
           </material>
         </visual>
         <visual name="head_visual">
-          <pose>0 0 0.91 0 0 0</pose>
+          <pose>0 0 1.40 0 0 0</pose>
           <geometry>
             <sphere>
-              <radius>0.13</radius>
+              <radius>0.14</radius>
             </sphere>
           </geometry>
           <material>
-            <ambient>0.0 0.8 0.1 1</ambient>
-            <diffuse>0.0 0.9 0.1 1</diffuse>
+            <ambient>0.72 0.48 0.32 1</ambient>
+            <diffuse>0.95 0.65 0.42 1</diffuse>
+          </material>
+        </visual>
+        <visual name="hair_visual">
+          <pose>0 0 1.51 0 0 0</pose>
+          <geometry>
+            <sphere>
+              <radius>0.115</radius>
+            </sphere>
+          </geometry>
+          <material>
+            <ambient>0.02 0.015 0.01 1</ambient>
+            <diffuse>0.04 0.03 0.02 1</diffuse>
           </material>
         </visual>
         <visual name="left_wheel_visual">
@@ -58,8 +131,8 @@
             </cylinder>
           </geometry>
           <material>
-            <ambient>0.02 0.02 0.02 1</ambient>
-            <diffuse>0.02 0.02 0.02 1</diffuse>
+            <ambient>0.01 0.01 0.01 0.25</ambient>
+            <diffuse>0.01 0.01 0.01 0.25</diffuse>
           </material>
         </visual>
         <visual name="right_wheel_visual">
@@ -71,8 +144,8 @@
             </cylinder>
           </geometry>
           <material>
-            <ambient>0.02 0.02 0.02 1</ambient>
-            <diffuse>0.02 0.02 0.02 1</diffuse>
+            <ambient>0.01 0.01 0.01 0.25</ambient>
+            <diffuse>0.01 0.01 0.01 0.25</diffuse>
           </material>
         </visual>
         <inertial>

@@ -219,6 +219,30 @@
     <child link="gimbal_mount_link"/>
     <origin xyz="0.08 0 ${base_height}" rpy="0 0 0"/>
   </joint>
+  <link name="lidar_link">
+    <visual>
+      <origin xyz="0 0 0.018" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.045" length="0.036"/>
+      </geometry>
+      <material name="lidar_black">
+        <color rgba="0.015 0.018 0.02 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.018" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.045" length="0.036"/>
+      </geometry>
+    </collision>
+    <xacro:cylinder_inertia mass="0.12" radius="0.045" length="0.036" axis="z"/>
+  </link>
+
+  <joint name="lidar_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="lidar_link"/>
+    <origin xyz="0.34 0 ${base_height + 0.10}" rpy="0 0 0"/>
+  </joint>
 
   <link name="gimbal_pan_link">
     <visual>
@@ -264,12 +288,12 @@
   </xacro:if>
 
   <xacro:unless value="$(arg gazebo_static_gimbal)">
-    <joint name="gimbal_pan_joint" type="revolute">
+    <joint name="gimbal_pan_joint" type="continuous">
       <parent link="gimbal_mount_link"/>
       <child link="gimbal_pan_link"/>
       <origin xyz="0 0 ${mount_height + 0.036}" rpy="0 0 0"/>
       <axis xyz="0 0 1"/>
-      <limit lower="-3.14159" upper="3.14159" effort="4.0" velocity="2.5"/>
+      <limit effort="4.0" velocity="2.5"/>
       <dynamics damping="0.15" friction="0.02"/>
     </joint>
   </xacro:unless>
@@ -591,6 +615,43 @@
     </sensor>
   </gazebo>
 
+  <gazebo reference="lidar_link">
+    <material>Gazebo/Black</material>
+    <sensor name="front_lidar" type="ray">
+      <pose>0 0 0.025 0 0 0</pose>
+      <always_on>true</always_on>
+      <visualize>true</visualize>
+      <update_rate>10</update_rate>
+      <ray>
+        <scan>
+          <horizontal>
+            <samples>271</samples>
+            <resolution>1</resolution>
+            <min_angle>-2.35619</min_angle>
+            <max_angle>2.35619</max_angle>
+          </horizontal>
+        </scan>
+        <range>
+          <min>0.22</min>
+          <max>8.0</max>
+          <resolution>0.01</resolution>
+        </range>
+        <noise>
+          <type>gaussian</type>
+          <mean>0.0</mean>
+          <stddev>0.01</stddev>
+        </noise>
+      </ray>
+      <plugin name="front_lidar_controller" filename="libgazebo_ros_ray_sensor.so">
+        <ros>
+          <namespace>/</namespace>
+          <remapping>~/out:=scan</remapping>
+        </ros>
+        <output_type>sensor_msgs/LaserScan</output_type>
+        <frame_name>lidar_link</frame_name>
+      </plugin>
+    </sensor>
+  </gazebo>
   <gazebo reference="left_wheel_link">
     <material>Gazebo/Black</material>
     <mu1>1.0</mu1>

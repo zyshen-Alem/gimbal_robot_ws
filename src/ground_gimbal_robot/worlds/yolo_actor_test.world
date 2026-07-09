@@ -1,0 +1,47 @@
+<?xml version="1.0"?>
+<sdf version="1.6">
+  <world name="yolo_actor_test_world">
+    <include>
+      <uri>model://sun</uri>
+    </include>
+
+    <include>
+      <uri>model://ground_plane</uri>
+    </include>
+
+    <actor name="tracking_subject">
+      <pose>2.3 0.0 0.0 0 0 3.14159</pose>
+      <skin>
+        <filename>walk.dae</filename>
+        <scale>0.85</scale>
+      </skin>
+      <animation name="standing">
+        <filename>walk.dae</filename>
+        <scale>0.85</scale>
+        <interpolate_x>true</interpolate_x>
+      </animation>
+      <script>
+        <loop>true</loop>
+        <delay_start>0.0</delay_start>
+        <auto_start>true</auto_start>
+        <trajectory id="0" type="standing">
+          <waypoint>
+            <time>0.0</time>
+            <pose>2.3 0.0 0.0 0 0 3.14159</pose>
+          </waypoint>
+          <waypoint>
+            <time>6.0</time>
+            <pose>2.3 0.0 0.0 0 0 3.14159</pose>
+          </waypoint>
+        </trajectory>
+      </script>
+    </actor>
+
+    <plugin name="gazebo_ros_state" filename="libgazebo_ros_state.so">
+      <ros>
+        <namespace>/gazebo</namespace>
+      </ros>
+      <update_rate>30.0</update_rate>
+    </plugin>
+  </world>
+</sdf>

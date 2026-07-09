@@ -36,6 +36,10 @@ def generate_launch_description():
     desired_distance = LaunchConfiguration('desired_distance')
     distance_kp = LaunchConfiguration('distance_kp')
     showcase_period = LaunchConfiguration('showcase_period')
+    orbit_radius = LaunchConfiguration('orbit_radius')
+    side_distance = LaunchConfiguration('side_distance')
+    side_preferred_side = LaunchConfiguration('side_preferred_side')
+    side_reference_mode = LaunchConfiguration('side_reference_mode')
     orbit_speed = LaunchConfiguration('orbit_speed')
     orbit_turn_bias = LaunchConfiguration('orbit_turn_bias')
     side_speed = LaunchConfiguration('side_speed')
@@ -129,6 +133,26 @@ def generate_launch_description():
             'showcase_period',
             default_value='14.0',
             description='Seconds per shot type when mode:=showcase.',
+        ),
+        DeclareLaunchArgument(
+            'orbit_radius',
+            default_value='2.0',
+            description='Radius in meters for orbit shots around the subject.',
+        ),
+        DeclareLaunchArgument(
+            'side_distance',
+            default_value='2.0',
+            description='Lateral distance in meters to hold from the subject during side tracking.',
+        ),
+        DeclareLaunchArgument(
+            'side_preferred_side',
+            default_value='left',
+            description='Subject-relative side for side tracking: left, right, or orbit_direction.',
+        ),
+        DeclareLaunchArgument(
+            'side_reference_mode',
+            default_value='target_motion',
+            description='Use target_motion for true parallel side tracking, or bearing for tangent fallback.',
         ),
         DeclareLaunchArgument(
             'desired_confidence',
@@ -338,10 +362,12 @@ def generate_launch_description():
                 'model_states_topic': '/gazebo/model_states',
                 'robot_model_name': 'ground_gimbal_robot',
                 'target_model_name': 'tracking_subject',
-                'orbit_radius': 1.35,
+                'orbit_radius': ParameterValue(orbit_radius, value_type=float),
                 'follow_distance': 1.35,
-                'side_distance': 1.35,
+                'side_distance': ParameterValue(side_distance, value_type=float),
                 'side_angle_deg': 82.0,
+                'side_preferred_side': side_preferred_side,
+                'side_reference_mode': side_reference_mode,
                 'heading_kp': 1.45,
                 'orbit_turn_gain': 1.35,
                 'orbit_lookahead_angle_deg': 24.0,

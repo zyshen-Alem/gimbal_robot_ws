@@ -42,6 +42,11 @@ class CinematicTracking(Node):
         self.declare_parameter('follow_distance', 1.35)
         self.declare_parameter('side_distance', 1.35)
         self.declare_parameter('side_angle_deg', 82.0)
+        self.declare_parameter('side_preferred_side', 'left')
+        self.declare_parameter('side_reference_mode', 'target_motion')
+        self.declare_parameter('side_slot_gain', 0.35)
+        self.declare_parameter('side_heading_blend_distance', 0.80)
+        self.declare_parameter('side_min_target_speed', 0.04)
         self.declare_parameter('orbit_speed', 0.18)
         self.declare_parameter('side_speed', 0.22)
         self.declare_parameter('follow_speed', 0.24)
@@ -91,6 +96,13 @@ class CinematicTracking(Node):
         self.follow_distance = float(self.get_parameter('follow_distance').value)
         self.side_distance = float(self.get_parameter('side_distance').value)
         self.side_angle = math.radians(float(self.get_parameter('side_angle_deg').value))
+        self.side_preferred_side = self.get_parameter('side_preferred_side').value
+        self.side_reference_mode = self.get_parameter('side_reference_mode').value
+        self.side_slot_gain = float(self.get_parameter('side_slot_gain').value)
+        self.side_heading_blend_distance = float(
+            self.get_parameter('side_heading_blend_distance').value
+        )
+        self.side_min_target_speed = float(self.get_parameter('side_min_target_speed').value)
         self.orbit_speed = float(self.get_parameter('orbit_speed').value)
         self.side_speed = float(self.get_parameter('side_speed').value)
         self.follow_speed = float(self.get_parameter('follow_speed').value)
@@ -395,11 +407,15 @@ class CinematicTracking(Node):
                 robot_x, robot_y, robot_yaw, target_x, target_y, distance
             )
         elif mode == 'side_tracking':
-            desired_heading = bearing_to_target - self.orbit_direction * self.side_angle
-            heading_error = self.normalize_angle(desired_heading - robot_yaw)
-            radial_error = distance - self.side_distance
-            linear = self.side_speed + self.distance_kp * radial_error
-            angular = self.heading_kp * heading_error
+            linear, angular = self.compute_side_tracking_command(
+                robot_x,
+                robot_y,
+                robot_yaw,
+                target_x,
+                target_y,
+                bearing_to_target,
+                distance,
+            )
         else:
             heading_error = self.normalize_angle(bearing_to_target - robot_yaw)
             radial_error = distance - self.follow_distance
@@ -411,6 +427,67 @@ class CinematicTracking(Node):
         linear = self.clamp(linear, -self.max_reverse_speed, self.max_linear_speed)
         angular = self.clamp_angular(angular)
         linear, angular = self.nav2_style_local_planner(linear, angular, robot_x, robot_y, robot_yaw)
+        return linear, angular
+
+    def compute_side_tracking_command(
+        self,
+        robot_x,
+        robot_y,
+        robot_yaw,
+        target_x,
+        target_y,
+        bearing_to_target,
+        distance,
+    ):
+        if self.side_reference_mode.lower() == 'target_motion':
+            command = self.compute_target_motion_side_command(
+                robot_x,
+                robot_y,
+                robot_yaw,
+                target_x,
+                target_y,
+            )
+            if command is not None:
+                return command
+
+        desired_heading = bearing_to_target - self.side_sign() * self.side_angle
+        heading_error = self.normalize_angle(desired_heading - robot_yaw)
+        radial_error = distance - self.side_distance
+        linear = self.side_speed + self.distance_kp * radial_error
+        angular = self.heading_kp * heading_error
+        return linear, angular
+
+    def compute_target_motion_side_command(self, robot_x, robot_y, robot_yaw, target_x, target_y):
+        target_vx, target_vy = self.target_velocity
+        target_speed = math.hypot(target_vx, target_vy)
+        if target_speed < self.side_min_target_speed:
+            return None
+
+        target_heading = math.atan2(target_vy, target_vx)
+        side_sign = self.side_sign()
+        side_normal_x = -math.sin(target_heading) * side_sign
+        side_normal_y = math.cos(target_heading) * side_sign
+        desired_x = target_x + side_normal_x * self.side_distance
+        desired_y = target_y + side_normal_y * self.side_distance
+
+        goal_dx = desired_x - robot_x
+        goal_dy = desired_y - robot_y
+        slot_error = math.hypot(goal_dx, goal_dy)
+        slot_heading = math.atan2(goal_dy, goal_dx)
+        blend = self.clamp(
+            slot_error / max(self.side_heading_blend_distance, 0.05),
+            0.0,
+            1.0,
+        )
+        desired_heading = self.interpolate_angle(target_heading, slot_heading, blend)
+        heading_error = self.normalize_angle(desired_heading - robot_yaw)
+
+        along_error = math.cos(target_heading) * goal_dx + math.sin(target_heading) * goal_dy
+        linear = max(self.side_speed, self.target_velocity_gain * target_speed)
+        linear += self.side_slot_gain * along_error
+        if slot_error > 0.30:
+            linear += 0.18 * slot_error * max(0.0, math.cos(heading_error))
+        angular = self.heading_kp * heading_error
         return linear, angular
 
     def compute_moving_target_orbit_command(self, robot_x, robot_y, robot_yaw, target_x, target_y, distance):
@@ -613,8 +690,20 @@ class CinematicTracking(Node):
             return 'follow_behind'
         return 'orbit'
 
+    def side_sign(self):
+        side = str(self.side_preferred_side).lower()
+        if side in ('right', 'clockwise', 'cw', '-1'):
+            return -1.0
+        if side in ('left', 'counterclockwise', 'ccw', '1'):
+            return 1.0
+        return self.orbit_direction
+
     def clamp_angular(self, value):
         return self.clamp(value, -self.max_angular_speed, self.max_angular_speed)
+
+    @classmethod
+    def interpolate_angle(cls, start, end, amount):
+        return cls.normalize_angle(start + amount * cls.normalize_angle(end - start))
 
     @staticmethod
     def slew(current, target, rate_limit, dt):

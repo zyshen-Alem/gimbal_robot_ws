@@ -1,11 +1,13 @@
 import math
 
 import rclpy
+from gazebo_msgs.msg import ModelStates
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Bool
 from std_msgs.msg import Float64MultiArray
+from std_msgs.msg import String
 
 
 class PidAxis:
@@ -48,6 +50,10 @@ class GimbalDemo(Node):
         )
         self.declare_parameter('robot_odom_topic', '/odom')
         self.declare_parameter('target_odom_topic', '/tracking_subject/odom')
+        self.declare_parameter('mode_command_topic', '/tracking_mode_cmd')
+        self.declare_parameter('model_states_topic', '/gazebo/model_states')
+        self.declare_parameter('robot_model_name', 'ground_gimbal_robot')
+        self.declare_parameter('target_model_name', 'tracking_subject')
         self.declare_parameter('camera_height', 0.55)
         self.declare_parameter('target_height', 0.82)
         self.declare_parameter('gimbal_forward_offset', 0.08)
@@ -58,6 +64,10 @@ class GimbalDemo(Node):
         self.declare_parameter('tilt_sign', -1.0)
         self.declare_parameter('pan_rate_limit', 2.8)
         self.declare_parameter('tilt_rate_limit', 1.8)
+        self.declare_parameter('enable_search', True)
+        self.declare_parameter('search_pan_limit', 1.35)
+        self.declare_parameter('search_period', 5.0)
+        self.declare_parameter('search_tilt_angle', 0.0)
 
         self.tracking_source = self.get_parameter('tracking_source').value
         self.target_timeout = float(self.get_parameter('target_timeout').value)
@@ -78,6 +88,10 @@ class GimbalDemo(Node):
         self.gazebo_command_topic = self.get_parameter('gazebo_command_topic').value
         self.robot_odom_topic = self.get_parameter('robot_odom_topic').value
         self.target_odom_topic = self.get_parameter('target_odom_topic').value
+        self.mode_command_topic = self.get_parameter('mode_command_topic').value
+        self.model_states_topic = self.get_parameter('model_states_topic').value
+        self.robot_model_name = self.get_parameter('robot_model_name').value
+        self.target_model_name = self.get_parameter('target_model_name').value
         self.camera_height = float(self.get_parameter('camera_height').value)
         self.target_height = float(self.get_parameter('target_height').value)
         self.gimbal_forward_offset = float(
@@ -92,6 +106,10 @@ class GimbalDemo(Node):
         self.tilt_sign = float(self.get_parameter('tilt_sign').value)
         self.pan_rate_limit = float(self.get_parameter('pan_rate_limit').value)
         self.tilt_rate_limit = float(self.get_parameter('tilt_rate_limit').value)
+        self.enable_search = bool(self.get_parameter('enable_search').value)
+        self.search_pan_limit = float(self.get_parameter('search_pan_limit').value)
+        self.search_period = float(self.get_parameter('search_period').value)
+        self.search_tilt_angle = float(self.get_parameter('search_tilt_angle').value)
 
         self.joint_state_publisher = None
         if self.publish_joint_states:
@@ -126,6 +144,18 @@ class GimbalDemo(Node):
                 self.update_target_visible,
                 10,
             )
+        self.mode_command_subscription = self.create_subscription(
+            String,
+            self.mode_command_topic,
+            self.update_mode_command,
+            10,
+        )
+        self.model_states_subscription = self.create_subscription(
+            ModelStates,
+            self.model_states_topic,
+            self.update_model_states,
+            10,
+        )
         self.robot_odom_subscription = None
         self.target_odom_subscription = None
         if self.tracking_source == 'odom':
@@ -147,7 +177,7 @@ class GimbalDemo(Node):
 
         self.pan_angle = 0.0
         self.tilt_angle = 0.0
-        self.pan_limit = math.radians(170.0)
+        self.pan_limit = 4.0 * math.pi
         self.tilt_limit = math.radians(45.0)
         self.start_time = self.get_clock().now()
         self.last_time = self.start_time
@@ -159,6 +189,7 @@ class GimbalDemo(Node):
         self.target_pose = None
         self.model_state_target = None
         self.target_visible = False
+        self.current_mode = 'follow'
         self.last_target_time = None
         self.last_tracking_state = None
         self.timer = self.create_timer(0.05, self.publish_gimbal_state)
@@ -167,6 +198,47 @@ class GimbalDemo(Node):
             'Starting gimbal controller: tracking_source=%s' % self.tracking_source
         )
 
+    def update_mode_command(self, msg):
+        requested = str(msg.data).strip().lower()
+        aliases = {
+            'orbitcw': 'orbit_cw',
+            'cw': 'orbit_cw',
+            'orbitccw': 'orbit_ccw',
+            'ccw': 'orbit_ccw',
+            'side': 'side_tracking',
+            'sidetracking': 'side_tracking',
+        }
+        self.current_mode = aliases.get(requested, requested)
+        if self.current_mode == 'follow':
+            self.model_state_target = (0.0, 0.0)
+            self.target_visible = True
+            self.last_target_time = self.get_clock().now()
+        self.get_logger().info('Gimbal mode command: %s' % self.current_mode)
+
+    def update_model_states(self, msg):
+        if self.current_mode == 'follow':
+            return
+        try:
+            robot_index = msg.name.index(self.robot_model_name)
+            target_index = msg.name.index(self.target_model_name)
+        except ValueError:
+            return
+
+        robot_pose = msg.pose[robot_index]
+        target_pose = msg.pose[target_index]
+        robot_yaw = self.quaternion_to_yaw(robot_pose.orientation)
+        self.robot_pose = (
+            robot_pose.position.x,
+            robot_pose.position.y,
+            robot_pose.position.z,
+            robot_yaw,
+        )
+        self.target_pose = (
+            target_pose.position.x,
+            target_pose.position.y,
+            target_pose.position.z,
+        )
+        self.update_odom_target()
     def update_robot_odom(self, msg):
         pose = msg.pose.pose
         self.robot_pose = (
@@ -242,8 +314,10 @@ class GimbalDemo(Node):
         self.last_target_time = self.get_clock().now()
 
     def update_target_visible(self, msg):
-        if not msg.data and self.tracking_source not in ('odom', 'model_states'):
-            self.target_visible = False
+        if msg.data and self.tracking_source not in ('odom', 'model_states'):
+            self.target_visible = True
+            self.last_target_time = self.get_clock().now()
+        # Do not clear target_visible on a single missed frame; timeout handles loss.
 
     def publish_gimbal_state(self):
         now = self.get_clock().now()
@@ -254,9 +328,29 @@ class GimbalDemo(Node):
         target_available = self.tracking_source == 'simulated'
         pan_step = 0.0
         tilt_step = 0.0
-        if self.tracking_source in ('odom', 'model_states'):
+        if self.current_mode == 'follow':
+            target_available = True
+            previous_pan = self.pan_angle
+            previous_tilt = self.tilt_angle
+            self.pan_angle = self.slew_angle(
+                self.pan_angle,
+                0.0,
+                self.pan_rate_limit,
+                dt,
+            )
+            self.tilt_angle = self.slew(
+                self.tilt_angle,
+                0.0,
+                self.tilt_rate_limit,
+                dt,
+            )
+            pan_step = self.normalize_angle(self.pan_angle - previous_pan)
+            tilt_step = self.tilt_angle - previous_tilt
+            target_x_error = 0.0
+            target_y_error = 0.0
+        elif self.current_mode != 'follow' and self.model_state_target is not None:
             target_available = self.is_target_recent(now)
-            if target_available and self.model_state_target is not None:
+            if target_available:
                 desired_pan, desired_tilt = self.model_state_target
                 previous_pan = self.pan_angle
                 previous_tilt = self.tilt_angle
@@ -284,13 +378,19 @@ class GimbalDemo(Node):
             target_x_error = self.target_x_error if target_available else 0.0
             target_y_error = self.target_y_error if target_available else 0.0
 
+        search_active = (
+            self.tracking_source == 'topic'
+            and self.enable_search
+            and not target_available
+        )
+
         if self.tracking_source not in ('odom', 'model_states') and target_available:
             framing_x_error = target_x_error - self.desired_x_offset
             framing_y_error = target_y_error - self.desired_y_offset
             if abs(framing_x_error) > self.deadband_x:
-                pan_step = self.pan_pid.update(framing_x_error, dt)
+                pan_step = self.pan_pid.update(-framing_x_error, dt)
             if abs(framing_y_error) > self.deadband_y:
-                tilt_step = self.tilt_pid.update(-framing_y_error, dt)
+                tilt_step = self.tilt_pid.update(framing_y_error, dt)
 
             self.pan_angle = self.clamp(
                 self.pan_angle + pan_step, -self.pan_limit, self.pan_limit
@@ -298,8 +398,29 @@ class GimbalDemo(Node):
             self.tilt_angle = self.clamp(
                 self.tilt_angle + tilt_step, -self.tilt_limit, self.tilt_limit
             )
+        elif search_active:
+            desired_pan = self.search_pan_limit * math.sin(
+                2.0 * math.pi * elapsed / max(self.search_period, 0.1)
+            )
+            desired_tilt = self.search_tilt_angle
+            previous_pan = self.pan_angle
+            previous_tilt = self.tilt_angle
+            self.pan_angle = self.slew_angle(
+                self.pan_angle,
+                self.clamp(desired_pan, -self.pan_limit, self.pan_limit),
+                self.pan_rate_limit,
+                dt,
+            )
+            self.tilt_angle = self.slew(
+                self.tilt_angle,
+                self.clamp(desired_tilt, -self.tilt_limit, self.tilt_limit),
+                self.tilt_rate_limit,
+                dt,
+            )
+            pan_step = self.normalize_angle(self.pan_angle - previous_pan)
+            tilt_step = self.tilt_angle - previous_tilt
 
-        self.log_tracking_state(target_available)
+        self.log_tracking_state(target_available, search_active)
 
         if self.joint_state_publisher is not None:
             joint_state = JointState()
@@ -336,12 +457,16 @@ class GimbalDemo(Node):
         age = (now - self.last_target_time).nanoseconds / 1_000_000_000
         return age <= self.target_timeout
 
-    def log_tracking_state(self, target_available):
-        state = 'tracking' if target_available else 'waiting for target'
+    def log_tracking_state(self, target_available, search_active=False):
+        if target_available:
+            state = 'tracking'
+        elif search_active:
+            state = 'searching for target'
+        else:
+            state = 'waiting for target'
         if state != self.last_tracking_state:
             self.get_logger().info('Gimbal state: %s' % state)
             self.last_tracking_state = state
-
     @staticmethod
     def quaternion_to_yaw(quaternion):
         siny_cosp = 2.0 * (quaternion.w * quaternion.z + quaternion.x * quaternion.y)
